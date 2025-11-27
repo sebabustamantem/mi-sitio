@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cámara Web</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        video, canvas { max-width: 100%; margin-top: 10px; }
+        select, button { margin: 10px; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Capturar Foto desde la Cámara</h1>
+    <select id="cameraSelect"></select>
+    <br>
+    <video id="video" autoplay playsinline></video>
+    <br>
+    <button id="captureBtn">Tomar Foto</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        document.getElementById('captureBtn');
+        const cameraSelect = document.getElementById('cameraSelect');
+        let currentStream;
+
+        // Listar cámaras disponibles
+        async function getCameras() {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            cameraSelect.innerHTML = '';
+            videoDevices.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Cámara ${index + 1}`;
+                cameraSelect.appendChild(option);
+            });
+        }
+
+        // Iniciar cámara seleccionada
+        async function startCamera(deviceId) {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            currentStream = await navigator.mediaDevices.getUserMedia({
+                video: { deviceId: deviceId ? { exact: deviceId } : undefined }
+            });
+            video.srcObject = currentStream;
+        }
+
+        // Capturar foto
+        captureBtn.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        });
+
+        // Eventos
+        cameraSelect.addEventListener('change', () => startCamera(cameraSelect.value));
+
+        // Inicializar
+        getCameras().then(() => startCamera());
+    </script>
+</body>
+</html>
