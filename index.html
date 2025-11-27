@@ -3,50 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Abrir Cámara</title>
+    <title>Cámara con Foto</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
-        }
-        video {
-            width: 100%;
-            max-width: 400px;
-            margin-top: 20px;
-            border: 2px solid #333;
-            border-radius: 8px;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        video, canvas { width: 100%; max-width: 400px; margin-top: 20px; border: 2px solid #333; border-radius: 8px; }
+        button { padding: 10px 20px; font-size: 16px; margin: 10px; }
     </style>
 </head>
 <body>
     <h1>Prueba de Cámara</h1>
-    <p>Haz clic en el botón para abrir la cámara del dispositivo.</p>
+    <p>Selecciona la cámara y toma una foto</p>
+
+    <select id="cameraSelect">
+        <option value="user">Frontal</option>
+        <option value="environment">Trasera</option>
+    </select>
+    <br>
     <button id="btnCamara">Abrir Cámara</button>
-    <video id="video" autoplay playsinline></video>
+    <button id="btnFoto">Tomar Foto</button>
+
+   video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
 
     <script>
         const btnCamara = document.getElementById('btnCamara');
+        const btnFoto = document.getElementById('btnFoto');
         const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const cameraSelect = document.getElementById('cameraSelect');
+        let stream;
 
         btnCamara.addEventListener('click', async () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: cameraSelect.value }
+                });
                 video.srcObject = stream;
             } catch (error) {
-                alert('No se pudo acceder a la cámara: ' + error.message);
+                alert('Error al acceder a la cámara: ' + error.message);
             }
+        });
+
+        btnFoto.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const foto = canvas.toDataURL('image/png');
+            console.log('Foto tomada:', foto);
+            alert('Foto tomada. Ahora se puede enviar a Google Drive.');
         });
     </script>
 </body>
