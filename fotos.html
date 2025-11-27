@@ -1,69 +1,148 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cámara Web</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-        video, canvas { max-width: 100%; margin-top: 10px; }
-        select, button { margin: 10px; padding: 10px; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cámara (trasera por defecto) + Subida a Google Drive</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 16px; }
+    h1 { font-size: 1.3rem; }
+    video, canvas { width: 100%; max-width: 640px; background: #000; border-radius: 8px; }
+    .controls { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    select, button { padding: 10px 14px; font-size: 1rem; }
+    #status { margin-top: 10px; font-size: 0.95rem; }
+    .ok { color: #0a7c2f; }
+    .err { color: #b00020; }
+  </style>
+  <!-- Google APIs client (Drive discovery) -->
+  https://apis.google.com/js/api.js</script>
+  <!-- Google Identity Services (OAuth 2.0) -->
+  https://accounts.google.com/gsi/client</script>
 </head>
 <body>
-    <h1>Capturar Foto desde la Cámara</h1>
+  <h1>Capturar Foto y Subir a Google Drive (cámara trasera por defecto)</h1>
+
+  <div class="controls">
+    <label for="cameraSelect">Cámara:</label>
     <select id="cameraSelect"></select>
-    <br>
-    <video id="video" autoplay playsinline></video>
-    <br>
-    <button id="captureBtn">Tomar Foto</button>
-    <canvas id="canvas"></canvas>
+    <button id="refreshBtn" type="button">Actualizar cámaras</button>
+  </div>
 
-    <script>
-        const video = document.getElementById('video');
-        const captureBtn = document.getElementById('captureBtn');
-        document.getElementById('cameraSelect');
-        const canvas = document.getElementById('canvas');
-        let currentStream;
+  <video id="video" autoplay playsinline></video>
 
-        // Listar cámaras disponibles
-        async function getCameras() {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(device => device.kind === 'videoinput');
-            cameraSelect.innerHTML = '';
-            videoDevices.forEach((device, index) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.text = device.label || `Cámara ${index + 1}`;
-                cameraSelect.appendChild(option);
-            });
+  <div class="controls">
+    <button id="captureBtn" type="button">Tomar foto</button>
+    <button id="uploadBtn" type="button" disabled>Subir a Google Drive</button>
+  </div>
+
+  <canvas id="canvas" style="display:none;"></canvas>
+  <div id="status" aria-live="polite"></div>
+
+  <script>
+    /* ============================
+       CONFIGURACIÓN GOOGLE CLOUD
+       ============================ */
+    // REEMPLAZA ESTOS VALORES:
+    const CLIENT_ID = '738522819410-tqp0spifkkg73lj8forvipsggicag7vj.apps.googleusercontent.com';
+    const API_KEY = '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';
+    // Alcance mínimo para subir archivos creados por tu app
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+    /* ============================
+       MANEJO DE CÁMARA
+       ============================ */
+    const video = document.getElementById('video');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const captureBtn = document.getElementById('captureBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const canvas = document.getElementById('canvas');
+    const statusEl = document.getElementById('status');
+
+    let currentStream = null;
+    let lastBlob = null;
+
+    function setStatus(msg, type = 'ok') {
+      statusEl.className = type;
+      statusEl.textContent = msg;
+    }
+
+    async function listCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+        cameraSelect.innerHTML = '';
+        if (videoDevices.length === 0) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No se encontraron cámaras';
+          cameraSelect.appendChild(opt);
+          setStatus('No hay cámaras disponibles.', 'err');
+          return;
         }
 
-        // Iniciar cámara (por defecto trasera)
-        async function startCamera(deviceId) {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-            const constraints = deviceId
-                ? { video: { deviceId: { exact: deviceId } } }
-                : { video: { facingMode: { exact: 'environment' } } }; // trasera por defecto
-            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = currentStream;
-        }
-
-        // Capturar foto
-        captureBtn.addEventListener('click', () => {
-            const context = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        videoDevices.forEach((device, index) => {
+          const opt = document.createElement('option');
+          opt.value = device.deviceId;
+          // El label aparece solo después de dar permisos; si no hay label mostramos un genérico
+          opt.textContent = device.label || `Cámara ${index + 1}`;
+          cameraSelect.appendChild(opt);
         });
+      } catch (err) {
+        console.error(err);
+        setStatus('Error al listar cámaras: ' + err.message, 'err');
+      }
+    }
 
-        // Cambiar cámara manualmente
-        cameraSelect.addEventListener('change', () => startCamera(cameraSelect.value));
+    async function startCamera(deviceId) {
+      try {
+        if (currentStream) {
+          currentStream.getTracks().forEach(t => t.stop());
+          currentStream = null;
+        }
 
-        // Inicializar
-        getCameras().then(() => startCamera());
-    </script>
-</body>
-</html>
+        const constraints = deviceId
+          ? { video: { deviceId: { exact: deviceId } } }
+          // Cámara trasera por defecto
+          : { video: { facingMode: { exact: 'environment' } } };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        video.srcObject = stream;
+
+        setStatus('Cámara iniciada correctamente.');
+      } catch (err) {
+        console.error(err);
+        // Fallback: si falla environment intentamos sin exact
+        if (!deviceId) {
+          try {
+            const fallback = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            currentStream = fallback;
+            video.srcObject = fallback;
+            setStatus('Cámara trasera iniciada (fallback).');
+            return;
+          } catch (inner) {
+            console.error(inner);
+          }
+        }
+        setStatus('No se pudo iniciar la cámara: ' + err.message, 'err');
+      }
+    }
+
+    captureBtn.addEventListener('click', () => {
+      if (!video.srcObject) {
+        setStatus('La cámara no está iniciada.', 'err');
+        return;
+      }
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (!w || !h) {
+        setStatus('Aún no hay datos de video para capturar.', 'err');
+        return;
+      }
+
+      const ctx = canvas.getContext('2d');
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(video, 0, 0, w, h);
