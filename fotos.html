@@ -15,12 +15,18 @@
     <select id="cameraSelect"></select>
     <br>
     <video id="video" autoplay playsinline></video>
-    const video = document.getElementById('video');
+    <br>
+    <button id="captureBtn">Tomar Foto</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
         const captureBtn = document.getElementById('captureBtn');
-        const cameraSelect = document.getElementById('cameraSelect');
+        document.getElementById('cameraSelect');
         const canvas = document.getElementById('canvas');
         let currentStream;
 
+        // Listar cámaras disponibles
         async function getCameras() {
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
@@ -33,16 +39,19 @@
             });
         }
 
+        // Iniciar cámara (por defecto trasera)
         async function startCamera(deviceId) {
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
-            currentStream = await navigator.mediaDevices.getUserMedia({
-                video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' } // 'environment' = trasera
-            });
+            const constraints = deviceId
+                ? { video: { deviceId: { exact: deviceId } } }
+                : { video: { facingMode: { exact: 'environment' } } }; // trasera por defecto
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = currentStream;
         }
 
+        // Capturar foto
         captureBtn.addEventListener('click', () => {
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
@@ -50,9 +59,11 @@
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
         });
 
+        // Cambiar cámara manualmente
         cameraSelect.addEventListener('change', () => startCamera(cameraSelect.value));
 
         // Inicializar
         getCameras().then(() => startCamera());
     </script>
 </body>
+</html>
